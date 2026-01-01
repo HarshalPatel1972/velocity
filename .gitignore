@@ -1,0 +1,18 @@
+# Binaries
+*.exe
+!deploy/*.exe
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Output folder
+Output/
+
+# OS files
+.DS_Store
+Thumbs.db
