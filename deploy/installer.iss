@@ -2,7 +2,7 @@
 ; Run with: ISCC.exe installer.iss
 
 #define MyAppName "Velocity"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Velocity Project"
 #define MyAppExeName "velocity.exe"
 
