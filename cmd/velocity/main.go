@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	CurrentVersion     = "v1.0.1"
+	CurrentVersion     = "v1.0.2"
 	rootProcess        = "WhatsApp.Root.exe"
 	memoryTrimInterval = 30 * time.Second
 	qosCheckInterval   = 500 * time.Millisecond
