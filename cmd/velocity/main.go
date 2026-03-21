@@ -19,7 +19,6 @@ import (
 const (
 	CurrentVersion     = "v1.0.2"
 	rootProcess        = "WhatsApp.Root.exe"
-	memoryTrimInterval = 30 * time.Second
 	qosCheckInterval   = 500 * time.Millisecond
 	maxMemoryMB        = 2048
 )
@@ -56,7 +55,7 @@ func onReady() {
 	systray.SetTooltip("WhatsApp Memory & CPU Optimizer")
 
 	log.Println("Velocity " + CurrentVersion + " - With Auto-Updater")
-	log.Printf("Monitoring: %s | Trim: %v | QoS: %v\n", rootProcess, memoryTrimInterval, qosCheckInterval)
+	log.Printf("Monitoring: %s | QoS: %v\n", rootProcess, qosCheckInterval)
 
 	// Silent update check on startup
 	go checkForUpdatesAsync(false)
@@ -107,27 +106,24 @@ func onExit() {
 }
 
 func backgroundLoop() {
-	memoryTicker := time.NewTicker(memoryTrimInterval)
 	qosTicker := time.NewTicker(qosCheckInterval)
-	defer memoryTicker.Stop()
 	defer qosTicker.Stop()
 
 	lastState := StateUnknown
 
-	// Initial trim
-	trimWhatsApp()
-
 	for {
 		select {
-		case <-memoryTicker.C:
-			trimWhatsApp()
-
 		case <-forceTrimChan:
-			trimWhatsApp()
+			err := memory.TrimAllProcesses()
+			if err != nil {
+				log.Printf("[MEM] Force trim failed: %v", err)
+			} else {
+				log.Printf("[MEM] Force trim applied")
+			}
 
 		case <-qosTicker.C:
-			pids, err := utils.FindProcessTree(rootProcess)
-			if err != nil {
+			pids, err := utils.GetWhatsAppProcessTree()
+			if err != nil || len(pids) == 0 {
 				if lastState != StateUnknown {
 					lastState = StateUnknown
 				}
@@ -149,6 +145,9 @@ func backgroundLoop() {
 			if currentState != lastState {
 				switch currentState {
 				case StateFocused:
+					memory.ResumeWorkers()
+					memory.SetForegroundPriority()
+
 					totalMB := cpu.GetTotalMemoryUsageMB(pids)
 					if totalMB < maxMemoryMB {
 						applyPerformanceMode(pids)
@@ -157,33 +156,18 @@ func backgroundLoop() {
 						log.Printf("[QoS] Focused but RAM high (%d MB) → Staying Normal", totalMB)
 					}
 				case StateBackground:
+					memory.ResumeWorkersSafe()
+					memory.TrimAllProcesses()
+					memory.SetBackgroundPriority()
+					memory.SuspendWorkers()
+
 					applyEfficiencyMode(pids)
-					log.Printf("[QoS] Background → Efficiency Mode")
+					log.Printf("[QoS] Background → Efficiency Mode & Workers Suspended")
 				}
 				lastState = currentState
 			}
 		}
 	}
-}
-
-func trimWhatsApp() {
-	pids, err := utils.FindProcessTree(rootProcess)
-	if err != nil {
-		if err == utils.ErrProcessNotFound {
-			log.Printf("[INFO] %s not running", rootProcess)
-		} else {
-			log.Printf("[ERROR] %v", err)
-		}
-		return
-	}
-
-	trimmed := 0
-	for _, pid := range pids {
-		if memory.TrimProcess(pid) == nil {
-			trimmed++
-		}
-	}
-	log.Printf("[MEM] Trimmed %d/%d processes", trimmed, len(pids))
 }
 
 func applyEfficiencyMode(pids []uint32) {
