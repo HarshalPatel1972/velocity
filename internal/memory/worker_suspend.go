@@ -2,9 +2,23 @@ package memory
 
 import (
 	"strings"
+	"sync"
+	"velocity/internal/utils"
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
+	"golang.org/x/sys/windows"
+)
+
+var (
+	modntdll             = windows.NewLazySystemDLL("ntdll.dll")
+	procNtSuspendProcess = modntdll.NewProc("NtSuspendProcess")
+	procNtResumeProcess  = modntdll.NewProc("NtResumeProcess")
+)
+
+var (
+	suspendedPIDs []uint32
+	suspendMutex  sync.Mutex
 )
 
 type ProcessType string
@@ -121,12 +135,59 @@ func ClassifyProcess(cmd string) ProcessType {
 }
 
 func SuspendWorkers() {
+	suspendMutex.Lock()
+	defer suspendMutex.Unlock()
+
+	treePIDs, err := utils.GetWhatsAppProcessTree()
+	if err != nil || len(treePIDs) == 0 {
+		return
+	}
+
+	treeMap := make(map[uint32]bool)
+	for _, p := range treePIDs {
+		treeMap[p] = true
+	}
+
+	cmdMap := fetchWebView2CmdLines()
+	var toSuspend []uint32
+
+	for pid, cmd := range cmdMap {
+		if !treeMap[pid] {
+			continue
+		}
+
+		class := ClassifyProcess(cmd)
+		if class == TypeGPU || class == TypeUtility {
+			toSuspend = append(toSuspend, pid)
+		}
+	}
+
+	for _, pid := range toSuspend {
+		hProcess, err := windows.OpenProcess(windows.PROCESS_SUSPEND_RESUME, false, pid)
+		if err == nil {
+			procNtSuspendProcess.Call(uintptr(hProcess))
+			windows.CloseHandle(hProcess)
+			suspendedPIDs = append(suspendedPIDs, pid)
+		}
+	}
 }
 
 func ResumeWorkers() {
+	suspendMutex.Lock()
+	defer suspendMutex.Unlock()
+
+	for _, pid := range suspendedPIDs {
+		hProcess, err := windows.OpenProcess(windows.PROCESS_SUSPEND_RESUME, false, pid)
+		if err == nil {
+			procNtResumeProcess.Call(uintptr(hProcess))
+			windows.CloseHandle(hProcess)
+		}
+	}
+	suspendedPIDs = nil
 }
 
 func ResumeWorkersSafe() {
 	ResumeWorkers()
 }
+
 
