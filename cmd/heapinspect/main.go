@@ -71,6 +71,37 @@ func findDevToolsPort() (string, error) {
 	return "", fmt.Errorf("port file is empty")
 }
 
+func generateReport() {
+	fmt.Printf("[*] Generating heap_report.txt...\n")
+	file, err := os.Create("heap_report.txt")
+	if err != nil {
+		fmt.Printf("[-] Failed to create report file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	file.WriteString("==========================================\n")
+	file.WriteString("       Velocity CDP Heap Report\n")
+	file.WriteString("==========================================\n\n")
+
+	file.WriteString("--- Memory Counters ---\n")
+	file.WriteString(fmt.Sprintf("%v\n\n", domCountersData))
+
+	file.WriteString("--- Store/React Metrics ---\n")
+	if reactFiberData != nil {
+		file.WriteString(fmt.Sprintf("Store: %v\n", reactFiberData))
+	} else {
+		file.WriteString("Store: Not available (or not evaluated)\n")
+	}
+	file.WriteString("\n")
+
+	file.WriteString("--- Largest 10 Objects (by retained size) ---\n")
+	file.WriteString(fmt.Sprintf("%v\n\n", largeObjectsData))
+
+	file.WriteString("==========================================\n")
+	fmt.Printf("[+] Report saved to heap_report.txt\n")
+}
+
 func main() {
 	fmt.Println("Starting WhatsApp heap inspection...")
 
@@ -132,6 +163,8 @@ func main() {
 
 	runHeapsQueries(conn)
 	takeHeapSnapshot(conn)
+
+	generateReport()
 }
 
 func sendCommand(conn *websocket.Conn, id int, method string, params map[string]interface{}) map[string]interface{} {
