@@ -131,6 +131,7 @@ func main() {
 	fmt.Println("Successfully connected to CDP WebSocket")
 
 	runHeapsQueries(conn)
+	takeHeapSnapshot(conn)
 }
 
 func sendCommand(conn *websocket.Conn, id int, method string, params map[string]interface{}) map[string]interface{} {
@@ -218,5 +219,54 @@ func runHeapsQueries(conn *websocket.Conn) {
 	}
 
 	fmt.Println("Queries completed.")
+}
+
+func takeHeapSnapshot(conn *websocket.Conn) {
+	fmt.Println("Taking full heap snapshot... This will take a while.")
+
+	// Enable HeapProfiler
+	conn.WriteJSON(map[string]interface{}{
+		"id":     1,
+		"method": "HeapProfiler.enable",
+	})
+
+	// Start snapshot
+	conn.WriteJSON(map[string]interface{}{
+		"id":     2,
+		"method": "HeapProfiler.takeHeapSnapshot",
+		"params": map[string]interface{}{
+			"reportProgress":      true,
+			"captureNumericValue": true,
+		},
+	})
+
+	file, err := os.Create("whatsapp_heap.json")
+	if err != nil {
+		log.Fatalf("Could not create heap file: %v", err)
+	}
+	defer file.Close()
+
+	for {
+		var resp map[string]interface{}
+		if err := conn.ReadJSON(&resp); err != nil {
+			break
+		}
+
+		if method, ok := resp["method"].(string); ok {
+			if method == "HeapProfiler.addHeapSnapshotChunk" {
+				params := resp["params"].(map[string]interface{})
+				chunk := params["chunk"].(string)
+				file.WriteString(chunk)
+			}
+			if method == "HeapProfiler.reportHeapSnapshotProgress" {
+				// Just printing progress might be too noisy. Keep silent.
+			}
+		}
+
+		if id, ok := resp["id"].(float64); ok && int(id) == 2 {
+			fmt.Println("Snapshot complete. Saved to whatsapp_heap.json")
+			break
+		}
+	}
 }
 
