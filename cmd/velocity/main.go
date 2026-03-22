@@ -111,6 +111,16 @@ func backgroundLoop() {
 
 	lastState := StateUnknown
 
+	var (
+		bgStartTime      time.Time
+		lastPurgeTime    time.Time
+		lastMemCheckTime time.Time
+		didInitialPurge  bool
+	)
+
+	// Attempt connection once initially (silent fail, will retry during loop)
+	memory.AttemptCDPConnectionAsync()
+
 	for {
 		select {
 		case <-forceTrimChan:
@@ -145,6 +155,9 @@ func backgroundLoop() {
 			if currentState != lastState {
 				switch currentState {
 				case StateFocused:
+					// Just in case it restarted while we were closed
+					memory.AttemptCDPConnectionAsync()
+
 					memory.ResumeWorkers()
 					memory.SetForegroundPriority()
 
@@ -163,8 +176,45 @@ func backgroundLoop() {
 
 					applyEfficiencyMode(pids)
 					log.Printf("[QoS] Background → Efficiency Mode & Workers Suspended")
+
+					bgStartTime = time.Now()
+					didInitialPurge = false
 				}
 				lastState = currentState
+			}
+
+			// Background state maintenance and cache purging
+			if currentState == StateBackground {
+				// Condition A: 10s initial cache purge after entering background
+				if !didInitialPurge && time.Since(bgStartTime) >= 10*time.Second {
+					// We only proceed if not focused (extra sanity check)
+					if !window.IsAnyProcessFocused(pids) {
+						memory.PurgeNativeCache()
+						lastPurgeTime = time.Now()
+					}
+					didInitialPurge = true // whether we successfully fired or aborted, don't keep tracking the 10s window
+				}
+
+				// Condition B: Every 5 minutes while backgrounded
+				if didInitialPurge && time.Since(lastPurgeTime) >= 5*time.Minute {
+					if !window.IsAnyProcessFocused(pids) {
+						memory.PurgeNativeCache()
+						lastPurgeTime = time.Now()
+					}
+				}
+
+				// Condition C: Memory crosses 800MB (check every 30s)
+				if didInitialPurge && time.Since(lastMemCheckTime) >= 30*time.Second {
+					totalMB := cpu.GetTotalMemoryUsageMB(pids)
+					lastMemCheckTime = time.Now()
+					if totalMB > 800 {
+						if !window.IsAnyProcessFocused(pids) {
+							log.Printf("[MEM] Background working set high (%d MB) -> Immediate Purge", totalMB)
+							memory.PurgeNativeCache()
+							lastPurgeTime = time.Now()
+						}
+					}
+				}
 			}
 		}
 	}
