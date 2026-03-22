@@ -118,6 +118,9 @@ func main() {
 	fmt.Println("Page WS URL:", pageWsUrl)
 	fmt.Println("Service Worker WS URL:", swWsUrl)
 
+	// We'll store results here later
+	_ = swWsUrl
+
 	// Connect to CDP
 	conn, _, err := websocket.DefaultDialer.Dial(pageWsUrl, nil)
 	if err != nil {
@@ -126,5 +129,94 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Successfully connected to CDP WebSocket")
+
+	runHeapsQueries(conn)
+}
+
+func sendCommand(conn *websocket.Conn, id int, method string, params map[string]interface{}) map[string]interface{} {
+	cmd := map[string]interface{}{
+		"id":     id,
+		"method": method,
+	}
+	if params != nil {
+		cmd["params"] = params
+	}
+	conn.WriteJSON(cmd)
+
+	for {
+		var resp map[string]interface{}
+		if err := conn.ReadJSON(&resp); err != nil {
+			return nil
+		}
+		if rid, ok := resp["id"].(float64); ok && int(rid) == id {
+			return resp
+		}
+	}
+}
+
+var (
+	largeObjectsData string
+	reactFiberData   string
+	waStoreData      string
+	moduleSystemData string
+	webpackChunkData string
+	domCountersData  map[string]interface{}
+)
+
+func runHeapsQueries(conn *websocket.Conn) {
+	fmt.Println("Running heap queries...")
+
+	// 4a
+	resp := sendCommand(conn, 3, "Runtime.evaluate", map[string]interface{}{
+		"expression":    "(() => { const results = []; const keys = Object.keys(window); keys.forEach(k => { try { const s = JSON.stringify(window[k]); if(s && s.length > 100000) results.push({key: k, size: s.length}); } catch(e){} }); return JSON.stringify(results); })()",
+		"returnByValue": true,
+	})
+	if res, ok := resp["result"].(map[string]interface{})["result"].(map[string]interface{}); ok {
+		largeObjectsData = fmt.Sprintf("%v", res["value"])
+	}
+
+	// 4b
+	resp = sendCommand(conn, 4, "Runtime.evaluate", map[string]interface{}{
+		"expression":    "(() => { const roots = []; document.querySelectorAll('*').forEach(el => { const keys = Object.keys(el).filter(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance')); if(keys.length) roots.push({tag: el.tagName, id: el.id, key: keys[0]}); }); return JSON.stringify(roots.slice(0,20)); })()",
+		"returnByValue": true,
+	})
+	if res, ok := resp["result"].(map[string]interface{})["result"].(map[string]interface{}); ok {
+		reactFiberData = fmt.Sprintf("%v", res["value"])
+	}
+
+	// 4c
+	resp = sendCommand(conn, 5, "Runtime.evaluate", map[string]interface{}{
+		"expression":    "(() => { const wa = window.WA || window.Store || window.whatsapp || window.require; return typeof wa + ' : ' + JSON.stringify(Object.keys(wa || {}).slice(0, 50)); })()",
+		"returnByValue": true,
+	})
+	if res, ok := resp["result"].(map[string]interface{})["result"].(map[string]interface{}); ok {
+		waStoreData = fmt.Sprintf("%v", res["value"])
+	}
+
+	// 4d
+	resp = sendCommand(conn, 6, "Runtime.evaluate", map[string]interface{}{
+		"expression":    "typeof window.require + ' | ' + typeof window.webpackChunk_whatsapp_web_client + ' | ' + typeof window.__webpack_modules__",
+		"returnByValue": true,
+	})
+	if res, ok := resp["result"].(map[string]interface{})["result"].(map[string]interface{}); ok {
+		moduleSystemData = fmt.Sprintf("%v", res["value"])
+	}
+
+	// 4e
+	resp = sendCommand(conn, 7, "Runtime.evaluate", map[string]interface{}{
+		"expression":    "(() => { try { const chunks = window.webpackChunk_whatsapp_web_client; if(!chunks) return 'no chunks'; return 'chunk count: ' + chunks.length; } catch(e) { return e.toString(); } })()",
+		"returnByValue": true,
+	})
+	if res, ok := resp["result"].(map[string]interface{})["result"].(map[string]interface{}); ok {
+		webpackChunkData = fmt.Sprintf("%v", res["value"])
+	}
+
+	// DOM counters
+	resp = sendCommand(conn, 9, "Memory.getDOMCounters", nil)
+	if res, ok := resp["result"].(map[string]interface{}); ok {
+		domCountersData = res
+	}
+
+	fmt.Println("Queries completed.")
 }
 
