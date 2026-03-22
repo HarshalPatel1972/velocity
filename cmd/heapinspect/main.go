@@ -88,7 +88,7 @@ func generateReport() {
 	file.WriteString(fmt.Sprintf("%v\n\n", domCountersData))
 
 	file.WriteString("--- Store/React Metrics ---\n")
-	if reactFiberData != nil {
+	if reactFiberData != "" {
 		file.WriteString(fmt.Sprintf("Store: %v\n", reactFiberData))
 	} else {
 		file.WriteString("Store: Not available (or not evaluated)\n")
@@ -105,11 +105,8 @@ func generateReport() {
 func main() {
 	fmt.Println("Starting WhatsApp heap inspection...")
 
-	port, err := findDevToolsPort()
-	if err != nil {
-		log.Fatalf("Error finding CDP port: %v", err)
-	}
-	fmt.Println("Found CDP port:", port)
+	port := "9222" // Hardcoded since we manually started it on 9222
+	fmt.Println("Using fixed CDP port:", port)
 
 	// Fetch targets
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/json/list", port))
