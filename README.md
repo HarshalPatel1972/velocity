@@ -89,9 +89,3 @@ MIT License. See [LICENSE](LICENSE).
 <p align="center">
   Made with ⚡ by <a href="https://github.com/HarshalPatel1972">Harshal Patel</a>
 </p>
-
----
-
-<p align="center">
-  <sub><b>Reddit Verification:</b> This project is maintained by <a href="https://www.reddit.com/user/IllActive2550">u/IllActive2550</a></sub>
-</p>
