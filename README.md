@@ -4,7 +4,7 @@
 >
 > Velocity was built to fix WhatsApp Desktop lag on Windows. After measuring and testing it properly, **I found that it does not fix the lag**, and that some of its features can make WhatsApp worse. The claims this README used to make were not accurate, so I've replaced them with what I actually found.
 >
-> **If you have Velocity installed, please uninstall it** (see [Uninstalling](#-uninstalling)).
+> **If you have Velocity installed, please uninstall it** (see [Uninstalling](#uninstalling)).
 
 ---
 
@@ -44,7 +44,7 @@ I measured WhatsApp `2.2638.102.0` (WebView2 `154.0.4258.53`) on a Windows 11 la
 
 ---
 
-## 🗑️ Uninstalling
+## Uninstalling
 
 1. Right-click the ⚡ tray icon → **Quit**
 2. Go to **Settings → Apps → Installed apps**
